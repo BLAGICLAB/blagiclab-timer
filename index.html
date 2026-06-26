@@ -824,6 +824,11 @@ async function ensurePngIcons(){
 }
 ensurePngIcons();
 
+/* -------------------- Init -------------------- */
+writeInputsMs(state.totalMs);
+renderTimer();
+tickClock();
+
 function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
 </script>
 </body>
