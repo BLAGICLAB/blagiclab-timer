@@ -45,15 +45,34 @@
   /* Radial ring */
   .ring{
     --p:0;
-    width:min(78vw, 520px);
+    width:min(82vw, 360px);
     aspect-ratio:1/1;
     border-radius:50%;
+    position: relative;
     background:
-      conic-gradient(var(--accent) calc(var(--p)*1%), rgba(255,255,255,.06) 0);
-    -webkit-mask: radial-gradient(circle, transparent 64%, #000 65%);
-            mask: radial-gradient(circle, transparent 64%, #000 65%);
+      /* Center hole (background color) */
+      radial-gradient(circle, var(--bg) 60%, transparent 61%),
+      /* Subtle outer ring base */
+      conic-gradient(rgba(255,255,255,0.06), rgba(255,255,255,0.06));
     transition: background .2s linear;
   }
+  /* The colored progress arc, drawn as an SVG overlay (does NOT mask children) */
+  .ring .ring-arc{
+    position:absolute;
+    inset:0;
+    width:100%; height:100%;
+    transform: rotate(-90deg);
+    pointer-events: none;
+  }
+  .ring .ring-arc circle{
+    fill: none;
+    stroke-width: 8;
+    stroke-linecap: round;
+  }
+  .ring .ring-arc .track{ stroke: rgba(255,255,255,0.06); }
+  .ring .ring-arc .progress{ stroke: var(--accent); transition: stroke-dashoffset .2s linear; }
+  .ring.warn .ring-arc .progress{ stroke: var(--warn); }
+  .ring.ok   .ring-arc .progress{ stroke: var(--ok); }
   .ring.warn{ background: conic-gradient(var(--warn) calc(var(--p)*1%), rgba(255,255,255,.06) 0); }
   .ring.ok  { background: conic-gradient(var(--ok)  calc(var(--p)*1%), rgba(255,255,255,.06) 0); }
   .ring-inner{
@@ -61,13 +80,29 @@
     display:grid; place-items:center;
   }
   .digits{
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1;
-    font-weight:200;
-    letter-spacing:-.04em;
-    line-height:1;
+    font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(56px, 13vw, 120px);
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1;
+    letter-spacing: 0;
+    white-space: nowrap;
+    text-align: center;
+    display: block;
   }
-  .digits .ms{ font-size:.28em; color:var(--muted); margin-left:.2em; }
+  .digits .ms{
+    font-size: 0.35em;
+    color: var(--muted);
+    margin-left: 0.15em;
+    font-weight: 500;
+    vertical-align: top;
+  }
+  .digits .sep{
+    color: var(--accent);
+    font-weight: 300;
+    margin: 0 0.04em;
+    vertical-align: top;
+  }
   .btn{
     border:1px solid var(--line);
     background:var(--surface);
@@ -170,13 +205,17 @@
     <!-- Stage -->
     <section class="glass rounded-[28px] p-6 md:p-10 relative">
       <!-- Timer / Stopwatch view -->
-      <div id="stageRing" class="relative mx-auto" style="width:max-content; max-width:100%">
+      <div id="stageRing" class="relative mx-auto flex justify-center" style="width:100%; max-width:100%">
         <div id="ring" class="ring mx-auto relative">
+          <svg class="ring-arc" viewBox="0 0 200 200" aria-hidden="true">
+            <circle class="track" cx="100" cy="100" r="92"></circle>
+            <circle id="ringProgress" class="progress" cx="100" cy="100" r="92"></circle>
+          </svg>
           <div class="ring-inner">
             <div class="text-center px-6 select-none">
               <div id="label" class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3">COUNTDOWN</div>
-              <div id="digits" class="digits text-[14vw] md:text-[110px]">
-                <span id="hh">00</span><span class="opacity-40">:</span><span id="mm">00</span><span class="opacity-40">:</span><span id="ss">00</span><span class="ms" id="ms">.00</span>
+              <div id="digits" class="digits">
+                <span id="hh">00</span><span class="sep">:</span><span id="mm">00</span><span class="sep">:</span><span id="ss">00</span><span class="ms" id="ms">.00</span>
               </div>
               <div id="sub" class="mt-4 text-[13px] text-[color:var(--muted)] tabular-nums">设置时长后点击开始</div>
             </div>
@@ -187,7 +226,7 @@
       <!-- Clock view (hidden by default) -->
       <div id="stageClock" class="hidden text-center py-6">
         <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-2">本地时间</div>
-        <div id="bigClock" class="digits text-[12vw] md:text-[140px]"></div>
+        <div id="bigClock" class="digits" style="font-size: clamp(72px, 12vw, 140px);"></div>
         <div id="bigDate" class="mt-3 text-[color:var(--muted)] tracking-wider"></div>
       </div>
 
@@ -318,7 +357,7 @@ const state = {
 
 /* -------------------- Elements -------------------- */
 const $ = (id) => document.getElementById(id);
-const ring = $('ring'), label = $('label'), digits = $('digits'),
+const ring = $('ring'), ringProgress = $('ringProgress'), label = $('label'), digits = $('digits'),
       hh = $('hh'), mm = $('mm'), ss = $('ss'), ms = $('ms'),
       sub = $('sub'), statusDot = $('statusDot'), statusText = $('statusText'),
       btnToggle = $('btnToggle'), btnReset = $('btnReset'), btnLap = $('btnLap'),
@@ -335,6 +374,11 @@ const ring = $('ring'), label = $('label'), digits = $('digits'),
       toast = $('toast'),
       nowClock = $('nowClock'),
       presetsEl = document.querySelector('#presets .flex');
+
+// Circle circumference: r = 92, C = 2 * PI * 92 ≈ 578.05
+const RING_CIRC = 2 * Math.PI * 92;
+ringProgress.setAttribute('stroke-dasharray', RING_CIRC.toFixed(3));
+ringProgress.setAttribute('stroke-dashoffset', '0');
 
 /* -------------------- Presets -------------------- */
 const PRESETS = [
@@ -446,8 +490,9 @@ function formatStopwatch(ms){
   return formatMs(ms, true);
 }
 function renderTimer(){
-  const pct = state.totalMs > 0 ? (1 - state.remainMs / state.totalMs) * 100 : 0;
-  ring.style.setProperty('--p', pct.toFixed(3));
+  const pct = state.totalMs > 0 ? (1 - state.remainMs / state.totalMs) : 0;
+  const offset = RING_CIRC * (1 - pct);
+  ringProgress.setAttribute('stroke-dashoffset', offset.toFixed(3));
   ring.classList.remove('warn', 'ok');
   if (state.remainMs === 0) ring.classList.add('ok');
   else if (state.totalMs > 0 && state.remainMs <= 10_000) ring.classList.add('warn');
@@ -464,8 +509,9 @@ function renderTimer(){
   btnToggle.textContent = state.running ? '暂停' : (state.remainMs === 0 ? '重新开始' : '开始');
 }
 function renderStopwatch(){
-  const pct = state.swElapsed % 60_000 / 60_000 * 100;
-  ring.style.setProperty('--p', pct.toFixed(3));
+  const pct = (state.swElapsed % 60_000) / 60_000;
+  const offset = RING_CIRC * (1 - pct);
+  ringProgress.setAttribute('stroke-dashoffset', offset.toFixed(3));
   ring.classList.remove('warn', 'ok');
   label.textContent = 'STOPWATCH';
   const t = formatStopwatch(state.swElapsed).split('.');
