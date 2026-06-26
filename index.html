@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Chronos · 全能计时器</title>
+<meta name="theme-color" content="#0b0b10"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="计时器"/>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="icon.svg"/>
+<link rel="icon" type="image/svg+xml" href="icon.svg"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --bg:#0b0b10;
+    --surface:rgba(255,255,255,0.04);
+    --line:rgba(255,255,255,0.08);
+    --text:#e8e8ee;
+    --muted:#9aa0a8;
+    --accent:#ff7a59;     /* warm coral */
+    --accent-2:#7ad7f0;   /* cool cyan */
+    --warn:#ff5577;
+    --ok:#7ad7a8;
+  }
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1200px 700px at 15% -10%, rgba(255,122,89,.18), transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, rgba(122,215,240,.15), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    letter-spacing:.01em;
+    -webkit-font-smoothing:antialiased;
+  }
+  .glass{
+    background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
+    border:1px solid var(--line);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 30px 60px -30px rgba(0,0,0,.6);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  /* Radial ring */
+  .ring{
+    --p:0;
+    width:min(78vw, 520px);
+    aspect-ratio:1/1;
+    border-radius:50%;
+    background:
+      conic-gradient(var(--accent) calc(var(--p)*1%), rgba(255,255,255,.06) 0);
+    -webkit-mask: radial-gradient(circle, transparent 64%, #000 65%);
+            mask: radial-gradient(circle, transparent 64%, #000 65%);
+    transition: background .2s linear;
+  }
+  .ring.warn{ background: conic-gradient(var(--warn) calc(var(--p)*1%), rgba(255,255,255,.06) 0); }
+  .ring.ok  { background: conic-gradient(var(--ok)  calc(var(--p)*1%), rgba(255,255,255,.06) 0); }
+  .ring-inner{
+    position:absolute; inset:0;
+    display:grid; place-items:center;
+  }
+  .digits{
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-weight:200;
+    letter-spacing:-.04em;
+    line-height:1;
+  }
+  .digits .ms{ font-size:.28em; color:var(--muted); margin-left:.2em; }
+  .btn{
+    border:1px solid var(--line);
+    background:var(--surface);
+    transition: transform .12s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:hover{ background:rgba(255,255,255,.07); }
+  .btn:active{ transform: scale(.98); }
+  .btn-primary{
+    background: linear-gradient(180deg, rgba(255,122,89,1), rgba(255,122,89,.85));
+    border-color: rgba(255,122,89,.5);
+    color:#1a0d08;
+    font-weight:600;
+  }
+  .btn-primary:hover{ filter:brightness(1.05); }
+  .chip{
+    border:1px solid var(--line);
+    background:var(--surface);
+    transition: all .15s ease;
+  }
+  .chip.active{
+    background: rgba(255,122,89,.14);
+    border-color: rgba(255,122,89,.5);
+    color:#ffd6c7;
+  }
+  .seg{ display:flex; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:4px; }
+  .seg button{ flex:1; padding:.5rem .75rem; border-radius:10px; color:var(--muted); font-weight:500; }
+  .seg button.on{ background:rgba(255,255,255,.08); color:var(--text); }
+  /* Number input look */
+  .num{
+    background:transparent; border:0; outline:none; color:var(--text);
+    font-variant-numeric: tabular-nums; text-align:center; font-weight:200;
+  }
+  .num:focus{ color:#fff; }
+  /* Subtle pulse when running */
+  @keyframes pulseDot{
+    0%,100%{ opacity:.35; transform:scale(1); }
+    50%{ opacity:1; transform:scale(1.15); }
+  }
+  .dot.running{ animation: pulseDot 1.4s ease-in-out infinite; }
+  /* Toast */
+  .toast{
+    position: fixed; left:50%; bottom:36px; transform: translateX(-50%) translateY(20px);
+    background: rgba(20,20,26,.85); border:1px solid var(--line); backdrop-filter: blur(12px);
+    color:var(--text); padding:.7rem 1rem; border-radius:14px; font-size:.9rem;
+    opacity:0; pointer-events:none; transition: all .25s ease;
+  }
+  .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
+  /* Small util */
+  .divider{ height:1px; background:var(--line); }
+  .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.7rem; padding:.1rem .4rem; border:1px solid var(--line); border-radius:6px; color:var(--muted); }
+  /* Scrollbar */
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.08); border-radius:8px; }
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; animation:none !important; }
+  }
+</style>
+</head>
+<body class="min-h-[100dvh]">
+
+<header class="px-6 md:px-10 pt-6 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-xl glass grid place-items-center">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-[color:var(--accent)]">
+        <circle cx="12" cy="13" r="8"/>
+        <path d="M12 9v4l2.5 2.5"/>
+        <path d="M9 2h6"/>
+        <path d="M12 2v3"/>
+      </svg>
+    </div>
+    <div class="leading-tight">
+      <div class="text-sm font-medium tracking-wide">Chronos</div>
+      <div class="text-[11px] text-[color:var(--muted)]">全能计时器</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-2 text-[12px] text-[color:var(--muted)]">
+    <span id="nowClock" class="tabular-nums"></span>
+    <span class="hidden md:inline">·</span>
+    <span class="hidden md:flex items-center gap-1.5">
+      <span class="dot inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--ok)]" id="statusDot"></span>
+      <span id="statusText">就绪</span>
+    </span>
+  </div>
+</header>
+
+<main class="px-4 md:px-10 pb-10">
+  <!-- Mode switch -->
+  <div class="max-w-[1400px] mx-auto mt-6">
+    <div class="seg max-w-md mx-auto" role="tablist" aria-label="模式">
+      <button data-mode="timer"  class="on">倒计时</button>
+      <button data-mode="stopwatch">秒表</button>
+      <button data-mode="clock">时钟</button>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="max-w-[1200px] mx-auto mt-8 grid lg:grid-cols-[1fr_360px] gap-6">
+
+    <!-- Stage -->
+    <section class="glass rounded-[28px] p-6 md:p-10 relative">
+      <!-- Timer / Stopwatch view -->
+      <div id="stageRing" class="relative mx-auto" style="width:max-content; max-width:100%">
+        <div id="ring" class="ring mx-auto relative">
+          <div class="ring-inner">
+            <div class="text-center px-6 select-none">
+              <div id="label" class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3">COUNTDOWN</div>
+              <div id="digits" class="digits text-[14vw] md:text-[110px]">
+                <span id="hh">00</span><span class="opacity-40">:</span><span id="mm">00</span><span class="opacity-40">:</span><span id="ss">00</span><span class="ms" id="ms">.00</span>
+              </div>
+              <div id="sub" class="mt-4 text-[13px] text-[color:var(--muted)] tabular-nums">设置时长后点击开始</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clock view (hidden by default) -->
+      <div id="stageClock" class="hidden text-center py-6">
+        <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-2">本地时间</div>
+        <div id="bigClock" class="digits text-[12vw] md:text-[140px]"></div>
+        <div id="bigDate" class="mt-3 text-[color:var(--muted)] tracking-wider"></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <button id="btnReset"  class="btn rounded-2xl px-5 py-3 text-sm">重置</button>
+        <button id="btnToggle" class="btn btn-primary rounded-2xl px-8 py-3 text-sm">开始</button>
+        <button id="btnLap"    class="btn rounded-2xl px-5 py-3 text-sm hidden">计次</button>
+        <button id="btnVoice"  class="btn rounded-2xl px-4 py-3 text-sm flex items-center gap-2" title="语音提醒">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5 6 9H2v6h4l5 4z"/>
+            <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+            <path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+          </svg>
+          <span id="voiceLabel">语音 开</span>
+        </button>
+      </div>
+
+      <!-- Quick presets (timer mode) -->
+      <div id="presets" class="mt-7">
+        <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3 text-center">常用预设</div>
+        <div class="flex flex-wrap justify-center gap-2">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Side panel -->
+    <aside class="space-y-6">
+      <!-- Duration editor -->
+      <div class="glass rounded-[24px] p-5">
+        <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3">设置时长</div>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <input id="inH" type="number" min="0" max="99" value="0" class="num w-full text-4xl" />
+            <div class="text-[11px] text-[color:var(--muted)] mt-1">小时</div>
+          </div>
+          <div>
+            <input id="inM" type="number" min="0" max="59" value="5" class="num w-full text-4xl" />
+            <div class="text-[11px] text-[color:var(--muted)] mt-1">分钟</div>
+          </div>
+          <div>
+            <input id="inS" type="number" min="0" max="59" value="0" class="num w-full text-4xl" />
+            <div class="text-[11px] text-[color:var(--muted)] mt-1">秒</div>
+          </div>
+        </div>
+        <div class="divider my-4"></div>
+        <div class="flex flex-wrap gap-2">
+          <button class="chip rounded-full px-3 py-1.5 text-xs" data-add="+1m">+1 分</button>
+          <button class="chip rounded-full px-3 py-1.5 text-xs" data-add="+5m">+5 分</button>
+          <button class="chip rounded-full px-3 py-1.5 text-xs" data-add="+10m">+10 分</button>
+          <button class="chip rounded-full px-3 py-1.5 text-xs" data-add="+30m">+30 分</button>
+          <button class="chip rounded-full px-3 py-1.5 text-xs" data-add="-1m">-1 分</button>
+          <button class="chip rounded-full px-3 py-1.5 text-xs" data-add="clear">清零</button>
+        </div>
+      </div>
+
+      <!-- Voice settings -->
+      <div class="glass rounded-[24px] p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)]">语音提醒</div>
+          <label class="inline-flex items-center gap-2 text-xs text-[color:var(--muted)]">
+            <input id="voiceEnabled" type="checkbox" class="accent-[color:var(--accent)]" checked>
+            启用
+          </label>
+        </div>
+        <label class="block text-[11px] text-[color:var(--muted)] mb-1">提醒时机（剩余分钟）</label>
+        <div id="voiceMarkers" class="flex flex-wrap gap-1.5 mb-4">
+          <!-- chips populated by JS -->
+        </div>
+        <label class="block text-[11px] text-[color:var(--muted)] mb-1">音色</label>
+        <select id="voiceSelect" class="w-full bg-transparent border border-[color:var(--line)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--accent)]"></select>
+        <div class="flex items-center gap-2 mt-3">
+          <button id="testVoice" class="btn rounded-xl px-3 py-2 text-xs">试听</button>
+          <span class="text-[11px] text-[color:var(--muted)]">剩余 5 分钟时开始播报</span>
+        </div>
+      </div>
+
+      <!-- Laps -->
+      <div class="glass rounded-[24px] p-5 hidden" id="lapsCard">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)]">计次</div>
+          <button id="clearLaps" class="text-xs text-[color:var(--muted)] hover:text-white">清空</button>
+        </div>
+        <ol id="lapsList" class="space-y-1.5 max-h-[260px] overflow-auto pr-1 text-sm"></ol>
+      </div>
+
+      <!-- Shortcuts -->
+      <div class="glass rounded-[24px] p-5">
+        <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3">快捷键</div>
+        <div class="grid grid-cols-2 gap-y-2 text-xs text-[color:var(--muted)]">
+          <div><span class="kbd">Space</span></div><div>开始 / 暂停</div>
+          <div><span class="kbd">R</span></div><div>重置</div>
+          <div><span class="kbd">L</span></div><div>计次（秒表）</div>
+          <div><span class="kbd">M</span></div><div>切换模式</div>
+          <div><span class="kbd">V</span></div><div>语音开关</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* -------------------- State -------------------- */
+const state = {
+  mode: 'timer',            // 'timer' | 'stopwatch' | 'clock'
+  running: false,
+  // timer
+  totalMs: 5 * 60 * 1000,   // 5:00
+  remainMs: 5 * 60 * 1000,
+  // stopwatch
+  swStart: 0, swElapsed: 0,
+  // laps
+  laps: [],
+  // voice
+  voiceEnabled: true,
+  voiceMarkers: new Set([5, 3, 1]),   // minutes remaining
+  spoken: new Set(),
+  // audio
+  audioCtx: null,
+  voices: [],
+  chosenVoice: null,
+  // wake lock
+  wakeLock: null,
+};
+
+/* -------------------- Elements -------------------- */
+const $ = (id) => document.getElementById(id);
+const ring = $('ring'), label = $('label'), digits = $('digits'),
+      hh = $('hh'), mm = $('mm'), ss = $('ss'), ms = $('ms'),
+      sub = $('sub'), statusDot = $('statusDot'), statusText = $('statusText'),
+      btnToggle = $('btnToggle'), btnReset = $('btnReset'), btnLap = $('btnLap'),
+      btnVoice = $('btnVoice'), voiceLabel = $('voiceLabel'),
+      stageRing = $('stageRing'), stageClock = $('stageClock'),
+      bigClock = $('bigClock'), bigDate = $('bigDate'),
+      lapsCard = $('lapsCard'), lapsList = $('lapsList'),
+      clearLaps = $('clearLaps'),
+      inH = $('inH'), inM = $('inM'), inS = $('inS'),
+      voiceEnabledEl = $('voiceEnabled'),
+      voiceMarkersEl = $('voiceMarkers'),
+      voiceSelect = $('voiceSelect'),
+      testVoice = $('testVoice'),
+      toast = $('toast'),
+      nowClock = $('nowClock'),
+      presetsEl = document.querySelector('#presets .flex');
+
+/* -------------------- Presets -------------------- */
+const PRESETS = [
+  { label: '泡面',  ms: 3 * 60 * 1000 },
+  { label: '番茄',  ms: 25 * 60 * 1000 },
+  { label: '午休',  ms: 20 * 60 * 1000 },
+  { label: '1 小时', ms: 60 * 60 * 1000 },
+  { label: '冥想',  ms: 10 * 60 * 1000 },
+  { label: '运动',  ms: 45 * 60 * 1000 },
+  { label: '会议',  ms: 30 * 60 * 1000 },
+  { label: '90 分', ms: 90 * 60 * 1000 },
+];
+PRESETS.forEach(p => {
+  const b = document.createElement('button');
+  b.className = 'chip rounded-full px-3.5 py-1.5 text-xs';
+  b.textContent = p.label;
+  b.onclick = () => setTimerMs(p.ms, /*announce*/true);
+  presetsEl.appendChild(b);
+});
+
+/* -------------------- Mode switching -------------------- */
+document.querySelectorAll('.seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    state.mode = btn.dataset.mode;
+    btnLap.classList.toggle('hidden', state.mode !== 'stopwatch');
+    if (state.mode === 'clock') {
+      stageRing.classList.add('hidden');
+      stageClock.classList.remove('hidden');
+      $('presets').classList.add('hidden');
+      $('btnReset').classList.add('hidden');
+      $('btnToggle').classList.add('hidden');
+      lapsCard.classList.add('hidden');
+      stopTimer(); // ensure clean state
+    } else {
+      stageRing.classList.remove('hidden');
+      stageClock.classList.add('hidden');
+      $('presets').classList.toggle('hidden', state.mode !== 'timer');
+      $('btnReset').classList.remove('hidden');
+      $('btnToggle').classList.remove('hidden');
+      btnToggle.textContent = state.running ? '暂停' : '开始';
+      if (state.mode === 'timer') {
+        renderTimer();
+        lapsCard.classList.add('hidden');
+      } else { // stopwatch
+        renderStopwatch();
+        lapsCard.classList.toggle('hidden', state.laps.length === 0);
+      }
+    }
+  });
+});
+
+/* -------------------- Duration inputs -------------------- */
+function readInputsMs(){
+  const h = clamp(+inH.value || 0, 0, 99);
+  const m = clamp(+inM.value || 0, 0, 59);
+  const s = clamp(+inS.value || 0, 0, 59);
+  return ((h * 60 + m) * 60 + s) * 1000;
+}
+function writeInputsMs(ms){
+  const total = Math.round(ms / 1000);
+  inH.value = String(Math.floor(total / 3600)).padStart(2, '0');
+  inM.value = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  inS.value = String(total % 60).padStart(2, '0');
+}
+[inH, inM, inS].forEach(el => el.addEventListener('change', () => {
+  if (state.mode !== 'timer') return;
+  setTimerMs(readInputsMs(), false);
+}));
+document.querySelectorAll('[data-add]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const a = btn.dataset.add;
+    let ms = readInputsMs();
+    if (a === 'clear') ms = 0;
+    else if (a === '+1m') ms += 60_000;
+    else if (a === '+5m') ms += 5 * 60_000;
+    else if (a === '+10m') ms += 10 * 60_000;
+    else if (a === '+30m') ms += 30 * 60_000;
+    else if (a === '-1m') ms = Math.max(0, ms - 60_000);
+    setTimerMs(ms, true);
+  });
+});
+
+function setTimerMs(ms, announce){
+  state.totalMs = Math.max(0, ms);
+  state.remainMs = state.totalMs;
+  state.spoken.clear();
+  writeInputsMs(state.totalMs);
+  if (state.mode === 'timer') renderTimer();
+  if (announce) showToast(formatMs(state.totalMs) + ' 已设置');
+}
+
+/* -------------------- Render -------------------- */
+function pad2(n){ return String(n).padStart(2, '0'); }
+function formatMs(ms, withMs=false){
+  ms = Math.max(0, ms);
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (withMs) {
+    const cs = Math.floor((ms % 1000) / 10);
+    return `${pad2(h)}:${pad2(m)}:${pad2(s)}.${pad2(cs)}`;
+  }
+  return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+}
+function formatStopwatch(ms){
+  return formatMs(ms, true);
+}
+function renderTimer(){
+  const pct = state.totalMs > 0 ? (1 - state.remainMs / state.totalMs) * 100 : 0;
+  ring.style.setProperty('--p', pct.toFixed(3));
+  ring.classList.remove('warn', 'ok');
+  if (state.remainMs === 0) ring.classList.add('ok');
+  else if (state.totalMs > 0 && state.remainMs <= 10_000) ring.classList.add('warn');
+  const t = formatMs(state.remainMs);
+  const [H, M, S] = t.split(':');
+  hh.textContent = H; mm.textContent = M; ss.textContent = S;
+  ms.textContent = '';
+  label.textContent = 'COUNTDOWN';
+  if (!state.running && state.remainMs === state.totalMs) sub.textContent = '设置时长后点击开始';
+  else if (state.running) sub.textContent = `剩余 ${formatHuman(state.remainMs)}`;
+  else sub.textContent = '已暂停';
+  statusText.textContent = state.running ? '计时中' : (state.remainMs === 0 ? '完成' : '就绪');
+  statusDot.classList.toggle('running', state.running);
+  btnToggle.textContent = state.running ? '暂停' : (state.remainMs === 0 ? '重新开始' : '开始');
+}
+function renderStopwatch(){
+  const pct = state.swElapsed % 60_000 / 60_000 * 100;
+  ring.style.setProperty('--p', pct.toFixed(3));
+  ring.classList.remove('warn', 'ok');
+  label.textContent = 'STOPWATCH';
+  const t = formatStopwatch(state.swElapsed).split('.');
+  const [H, M, S] = t[0].split(':');
+  hh.textContent = H; mm.textContent = M; ss.textContent = S;
+  ms.textContent = '.' + t[1];
+  sub.textContent = state.running ? `计次 ${state.laps.length}` : (state.swElapsed > 0 ? '已暂停' : '点击开始计时');
+  statusText.textContent = state.running ? '计时中' : (state.swElapsed > 0 ? '已暂停' : '就绪');
+  statusDot.classList.toggle('running', state.running);
+  btnToggle.textContent = state.running ? '暂停' : (state.swElapsed > 0 ? '继续' : '开始');
+}
+function formatHuman(ms){
+  if (ms >= 3600_000) return Math.floor(ms/3600_000)+' 小时';
+  if (ms >= 60_000)   return Math.floor(ms/60_000)+' 分钟';
+  return Math.floor(ms/1000)+' 秒';
+}
+
+/* -------------------- Tick loop -------------------- */
+let raf = null, last = 0;
+function tick(now){
+  if (!state.running) { raf = null; return; }
+  const dt = last ? now - last : 0;
+  last = now;
+  if (state.mode === 'timer') {
+    state.remainMs = Math.max(0, state.remainMs - dt);
+    checkVoiceMarkers();
+    renderTimer();
+    if (state.remainMs <= 0) {
+      onTimerComplete();
+      return;
+    }
+  } else if (state.mode === 'stopwatch') {
+    state.swElapsed += dt;
+    renderStopwatch();
+  }
+  raf = requestAnimationFrame(tick);
+}
+
+function onTimerComplete(){
+  state.running = false;
+  state.remainMs = 0;
+  renderTimer();
+  beep();
+  if (state.voiceEnabled) speak('计时结束');
+  showToast('时间到');
+  releaseWakeLock();
+}
+
+/* -------------------- Voice markers -------------------- */
+function checkVoiceMarkers(){
+  if (!state.voiceEnabled) return;
+  const remainMin = Math.ceil(state.remainMs / 60_000);
+  for (const m of state.voiceMarkers) {
+    if (remainMin === m && !state.spoken.has(m)) {
+      state.spoken.add(m);
+      const text = m === 1 ? '还剩一分钟' : `还剩 ${m} 分钟`;
+      speak(text);
+    }
+  }
+}
+
+/* -------------------- Audio: beep (WebAudio) -------------------- */
+function beep(){
+  try {
+    if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = state.audioCtx;
+    const now = ctx.currentTime;
+    // pleasant 3-tone ping
+    const freqs = [880, 1175, 1568];
+    freqs.forEach((f, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, now + i * 0.18);
+      g.gain.exponentialRampToValueAtTime(0.25, now + i * 0.18 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.35);
+      o.connect(g).connect(ctx.destination);
+      o.start(now + i * 0.18);
+      o.stop(now + i * 0.18 + 0.4);
+    });
+  } catch(e){ console.warn('beep failed', e); }
+}
+
+/* -------------------- Speech synthesis -------------------- */
+function loadVoices(){
+  state.voices = speechSynthesis.getVoices() || [];
+  voiceSelect.innerHTML = '';
+  const list = state.voices.length ? state.voices : [];
+  if (list.length === 0) {
+    const opt = document.createElement('option');
+    opt.textContent = '系统默认';
+    opt.value = '';
+    voiceSelect.appendChild(opt);
+    return;
+  }
+  // Prefer Chinese voices
+  const sorted = [...list].sort((a, b) => {
+    const aZh = /zh|chinese|mandarin|cantonese/i.test(a.lang + a.name) ? 0 : 1;
+    const bZh = /zh|chinese|mandarin|cantonese/i.test(b.lang + b.name) ? 0 : 1;
+    return aZh - bZh;
+  });
+  sorted.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = `${v.name} · ${v.lang}`;
+    voiceSelect.appendChild(opt);
+  });
+  // default pick: first Chinese if any
+  state.chosenVoice = sorted[0] || null;
+  voiceSelect.value = state.chosenVoice?.name || '';
+}
+if ('speechSynthesis' in window) {
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+function speak(text){
+  try {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-CN';
+    u.rate = 1.05;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    if (state.chosenVoice) u.voice = state.chosenVoice;
+    else if (state.voices.length) {
+      const zh = state.voices.find(v => /zh|chinese/i.test(v.lang));
+      if (zh) u.voice = zh;
+    }
+    speechSynthesis.speak(u);
+  } catch(e){ console.warn('speak failed', e); }
+}
+voiceSelect.addEventListener('change', () => {
+  state.chosenVoice = state.voices.find(v => v.name === voiceSelect.value) || null;
+});
+testVoice.addEventListener('click', () => speak('语音播报测试，倒计时五分钟后结束'));
+
+/* -------------------- Voice markers UI -------------------- */
+const MARKER_CHOICES = [10, 5, 3, 2, 1, 0.5];
+function renderMarkers(){
+  voiceMarkersEl.innerHTML = '';
+  MARKER_CHOICES.forEach(m => {
+    const b = document.createElement('button');
+    const active = state.voiceMarkers.has(m);
+    b.className = 'chip rounded-full px-2.5 py-1 text-[11px] ' + (active ? 'active' : '');
+    b.textContent = m >= 1 ? `${m} 分` : '30 秒';
+    b.onclick = () => {
+      if (state.voiceMarkers.has(m)) state.voiceMarkers.delete(m);
+      else state.voiceMarkers.add(m);
+      renderMarkers();
+    };
+    voiceMarkersEl.appendChild(b);
+  });
+}
+renderMarkers();
+
+voiceEnabledEl.addEventListener('change', () => {
+  state.voiceEnabled = voiceEnabledEl.checked;
+  voiceLabel.textContent = state.voiceEnabled ? '语音 开' : '语音 关';
+  if (!state.voiceEnabled) speechSynthesis.cancel();
+});
+
+/* -------------------- Voice toggle button -------------------- */
+btnVoice.addEventListener('click', () => {
+  state.voiceEnabled = !state.voiceEnabled;
+  voiceEnabledEl.checked = state.voiceEnabled;
+  voiceLabel.textContent = state.voiceEnabled ? '语音 开' : '语音 关';
+  if (!state.voiceEnabled) speechSynthesis.cancel();
+  else speak('语音提醒已开启');
+});
+
+/* -------------------- Controls -------------------- */
+btnToggle.addEventListener('click', () => {
+  if (state.mode === 'clock') return;
+  if (state.mode === 'timer') {
+    if (state.remainMs === 0) { state.remainMs = state.totalMs; state.spoken.clear(); }
+    state.running ? stopTimer() : startTimer();
+  } else if (state.mode === 'stopwatch') {
+    state.running ? stopTimer() : startTimer();
+  }
+});
+btnReset.addEventListener('click', () => {
+  if (state.mode === 'timer') {
+    state.remainMs = state.totalMs; state.spoken.clear(); state.running = false;
+  } else if (state.mode === 'stopwatch') {
+    state.swElapsed = 0; state.laps = []; lapsList.innerHTML = ''; lapsCard.classList.add('hidden'); state.running = false;
+  }
+  render();
+  stopTimer();
+  speechSynthesis.cancel();
+});
+btnLap.addEventListener('click', () => {
+  if (state.mode !== 'stopwatch' || !state.running) return;
+  state.laps.unshift(state.swElapsed);
+  renderLaps();
+  lapsCard.classList.remove('hidden');
+});
+clearLaps.addEventListener('click', () => { state.laps = []; renderLaps(); lapsCard.classList.add('hidden'); });
+
+function renderLaps(){
+  lapsList.innerHTML = '';
+  state.laps.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.className = 'flex items-center justify-between border-b border-[color:var(--line)] py-1.5';
+    const idx = state.laps.length - i;
+    const total = formatStopwatch(t);
+    const prev = i === state.laps.length - 1 ? 0 : state.laps[i + 1];
+    const split = formatStopwatch(t - prev);
+    li.innerHTML = `
+      <span class="text-[color:var(--muted)] text-xs">计次 #${idx}</span>
+      <span class="flex items-center gap-4">
+        <span class="text-[color:var(--muted)] text-xs tabular-nums">+${split}</span>
+        <span class="tabular-nums">${total}</span>
+      </span>`;
+    lapsList.appendChild(li);
+  });
+}
+function render(){ state.mode === 'timer' ? renderTimer() : renderStopwatch(); }
+
+/* -------------------- Start / Stop -------------------- */
+function startTimer(){
+  if (state.mode === 'timer' && state.remainMs <= 0) return;
+  state.running = true;
+  last = 0;
+  if (!raf) raf = requestAnimationFrame(tick);
+  ensureAudio();
+  requestWakeLock();
+}
+function stopTimer(){
+  state.running = false;
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  render();
+  releaseWakeLock();
+}
+function ensureAudio(){
+  // resume audio context on user gesture
+  try { if (state.audioCtx && state.audioCtx.state === 'suspended') state.audioCtx.resume(); } catch(e){}
+  // warm up TTS
+  if (state.voiceEnabled && 'speechSynthesis' in window) {
+    try { speechSynthesis.resume(); } catch(e){}
+  }
+}
+
+/* -------------------- Wake Lock -------------------- */
+async function requestWakeLock(){
+  try {
+    if ('wakeLock' in navigator) {
+      state.wakeLock = await navigator.wakeLock.request('screen');
+      state.wakeLock.addEventListener('release', () => {});
+    }
+  } catch(e){ /* ignore */ }
+}
+async function releaseWakeLock(){
+  try { if (state.wakeLock) { await state.wakeLock.release(); state.wakeLock = null; } } catch(e){}
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && state.running) await requestWakeLock();
+});
+
+/* -------------------- Wall clock & nowClock -------------------- */
+function tickClock(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const t = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  nowClock.textContent = t;
+  if (state.mode === 'clock') {
+    bigClock.textContent = t;
+    const week = ['日','一','二','三','四','五','六'][d.getDay()];
+    bigDate.textContent = `${d.getFullYear()} 年 ${pad(d.getMonth()+1)} 月 ${pad(d.getDate())} 日 · 周${week}`;
+  }
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* -------------------- Toast -------------------- */
+let toastTimer = null;
+function showToast(text){
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+/* -------------------- Keyboard shortcuts -------------------- */
+window.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); btnToggle.click(); }
+  else if (e.key.toLowerCase() === 'r') btnReset.click();
+  else if (e.key.toLowerCase() === 'l') btnLap.click();
+  else if (e.key.toLowerCase() === 'm') {
+    const order = ['timer', 'stopwatch', 'clock'];
+    const next = order[(order.indexOf(state.mode) + 1) % order.length];
+    document.querySelector(`.seg button[data-mode="${next}"]`).click();
+  }
+  else if (e.key.toLowerCase() === 'v') btnVoice.click();
+});
+
+/* -------------------- PWA: service worker + icons -------------------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+// Generate PNG icons from the inline SVG so Android Chrome (which prefers PNG) is happy.
+async function ensurePngIcons(){
+  const svgText = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="g" cx="30%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#ff9a7a"/>
+      <stop offset="55%" stop-color="#ff7a59"/>
+      <stop offset="100%" stop-color="#7a3b2a"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity=".18"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity=".04"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0b0b10"/>
+  <circle cx="256" cy="288" r="176" fill="none" stroke="url(#ring)" stroke-width="6"/>
+  <circle cx="256" cy="288" r="176" fill="none" stroke="url(#g)" stroke-width="22"
+          stroke-dasharray="905 1105" stroke-linecap="round" transform="rotate(-90 256 288)"/>
+  <g stroke="#ffffff" stroke-linecap="round" stroke-width="14" fill="none" opacity=".95">
+    <line x1="256" y1="288" x2="256" y2="180"/>
+    <line x1="256" y1="288" x2="338" y2="312"/>
+    <circle cx="256" cy="288" r="10" fill="#ffffff"/>
+  </g>
+  <rect x="216" y="76" width="80" height="34" rx="12" fill="#ff7a59"/>
+  <rect x="236" y="58" width="40" height="22" rx="6" fill="#ffb499"/>
+</svg>`;
+  const make = async (size) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    c.getContext('2d').drawImage(img, 0, 0, size, size);
+    return new Promise((res) => c.toBlob(res, 'image/png'));
+  };
+  try {
+    const [p192, p512] = await Promise.all([make(192), make(512)]);
+    [p192, p512].forEach(async (blob, i) => {
+      const size = i === 0 ? 192 : 512;
+      const fname = i === 0 ? 'icon-192.png' : 'icon-512.png';
+      const url = URL.createObjectURL(blob);
+      // cache the blob for the manifest
+      const existing = await caches.match(fname);
+      const resp = new Response(blob, { headers: { 'Content-Type': 'image/png' } });
+      const cache = await caches.open('chronos-icons');
+      await cache.put(fname, resp);
+      URL.revokeObjectURL(url);
+    });
+  } catch (e) { /* non-fatal */ }
+}
+ensurePngIcons();
+
+function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
+</script>
+</body>
+</html>
