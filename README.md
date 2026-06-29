@@ -47,3 +47,30 @@
 - `manifest.webmanifest` — PWA 清单
 - `sw.js` — Service Worker（离线缓存）
 - `icon.svg` — 应用图标
+
+## 更新日志
+
+### 2026-06-29 · 模式独立 + 时钟新功能 + 审计修复
+
+**修复（用户反馈）**
+- 切秒表不会再自动开始 — `state` 拆为 `sessions.timer` / `sessions.stopwatch`，三个模式互不串台
+- 时钟功能从仅看时间升级为：闹钟设置 + 整点报时
+- 闹钟多档可设（增删启停、5 个快捷时间、可加标签），到点响铃 + 语音播报
+
+**新增**
+- 整点报时：开关启用后每小时整点播报当前时间 + 提示音，显示“下次播报：15:00”
+- 闹钟 · 5 个预设快捷：06:30 起床 / 07:30 出门 / 12:00 午饭 / 18:00 晚饭 / 22:30 睡觉
+
+**修复（代码审计）**
+- 闹钟与整点报时不再只在 clock 模式下生效（全局生效）
+- 偏好设置跨刷新保留：整点报时开关、语音开关、语音提醒时机
+- SVG `<linearGradient id="ring">` 重命名为 `ringGradient`（与 HTML `div#ring` ID 冲突）
+- Service Worker 版本号升 v3
+- 清理死代码（`digits` 变量、`cur` helper）
+
+**测试**
+- Playwright 自动化 6 场景 13 断言全过，0 console 错误
+- 覆盖：模式独立 / 闹钟全局生效 / 偏好持久化 / 闹钟持久化
+
+**提交**：`898403f · fix(timer): independent sessions, clock alarms + chime, prefs persistence`
+
