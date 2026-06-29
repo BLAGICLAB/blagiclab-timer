@@ -1,5 +1,5 @@
 // Chronos service worker
-const VERSION = 'chronos-v1';
+const VERSION = 'chronos-v3';
 const CORE = [
   './',
   './index.html',

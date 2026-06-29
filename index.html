@@ -228,6 +228,55 @@
         <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-2">本地时间</div>
         <div id="bigClock" class="digits" style="font-size: clamp(72px, 12vw, 140px);"></div>
         <div id="bigDate" class="mt-3 text-[color:var(--muted)] tracking-wider"></div>
+
+        <!-- 闹钟 + 整点报时 -->
+        <div class="mt-8 max-w-md mx-auto space-y-4 text-left">
+          <!-- 添加闹钟 -->
+          <div class="glass rounded-2xl p-4">
+            <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3">添加闹钟</div>
+            <div class="flex items-center gap-3">
+              <input id="alarmTime" type="time" value="08:00"
+                     class="bg-transparent border border-[color:var(--line)] rounded-xl px-3 py-2 text-2xl tabular-nums focus:outline-none focus:border-[color:var(--accent)]" />
+              <input id="alarmLabel" type="text" placeholder="标签（可选）" maxlength="20"
+                     class="flex-1 min-w-0 bg-transparent border border-[color:var(--line)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--accent)]" />
+              <button id="alarmAdd" class="btn btn-primary rounded-xl px-4 py-2 text-sm">添加</button>
+            </div>
+            <div class="flex flex-wrap gap-1.5 mt-3">
+              <span class="text-[11px] text-[color:var(--muted)] mr-1 self-center">快捷：</span>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="06:30">06:30 起床</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="07:30">07:30 出门</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="12:00">12:00 午饭</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="18:00">18:00 晚饭</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="22:30">22:30 睡觉</button>
+            </div>
+          </div>
+
+          <!-- 闹钟列表 -->
+          <div class="glass rounded-2xl p-4">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)]">闹钟列表 <span id="alarmCount" class="opacity-60">（0）</span></div>
+            </div>
+            <ul id="alarmList" class="space-y-2"></ul>
+            <div id="alarmEmpty" class="text-xs text-[color:var(--muted)] text-center py-4">还没有闹钟</div>
+          </div>
+
+          <!-- 整点报时 -->
+          <div class="glass rounded-2xl p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)]">整点报时</div>
+                <div class="text-xs text-[color:var(--muted)] mt-1">每小时整点播报当前时间</div>
+              </div>
+              <label class="inline-flex items-center cursor-pointer">
+                <input id="chimeEnabled" type="checkbox" class="sr-only peer">
+                <div class="w-11 h-6 rounded-full bg-white/10 peer-checked:bg-[color:var(--accent)] relative transition">
+                  <div class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white peer-checked:translate-x-5 transition"></div>
+                </div>
+              </label>
+            </div>
+            <div class="text-[11px] text-[color:var(--muted)] mt-2" id="chimeNext">下次播报：--:--</div>
+          </div>
+        </div>
       </div>
 
       <!-- Controls -->
@@ -332,33 +381,74 @@
 <div id="toast" class="toast"></div>
 
 <script>
-/* -------------------- State -------------------- */
+/* ============================================================
+   State — 每个模式独立 session，互不串台
+   ============================================================ */
 const state = {
-  mode: 'timer',            // 'timer' | 'stopwatch' | 'clock'
-  running: false,
-  // timer
-  totalMs: 5 * 60 * 1000,   // 5:00
-  remainMs: 5 * 60 * 1000,
-  // stopwatch
-  swStart: 0, swElapsed: 0,
-  // laps
-  laps: [],
-  // voice
+  mode: 'timer',          // 'timer' | 'stopwatch' | 'clock'
+  sessions: {
+    timer: {
+      totalMs: 5 * 60 * 1000,
+      remainMs: 5 * 60 * 1000,
+      running: false,
+      spoken: new Set(),
+    },
+    stopwatch: {
+      swElapsed: 0,
+      laps: [],
+      running: false,
+    },
+  },
+  // 跨模式通用（默认值，loadPrefs 后被覆盖）
   voiceEnabled: true,
-  voiceMarkers: new Set([5, 3, 1]),   // minutes remaining
-  spoken: new Set(),
+  voiceMarkers: [5, 3, 1],
   // audio
   audioCtx: null,
   voices: [],
   chosenVoice: null,
   // wake lock
   wakeLock: null,
+  // 闹钟
+  alarms: [],
+  // 整点报时
+  chimeEnabled: false,
+  chimeLastKey: '',
 };
+
+const sTimer = () => state.sessions.timer;
+const sStop  = () => state.sessions.stopwatch;
+
+/* ============================================================
+   Prefs — 偏好持久化（voiceEnabled / voiceMarkers / chimeEnabled）
+   ============================================================ */
+const PREFS_KEY = 'chronos.prefs';
+function loadPrefs(){
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (typeof p.voiceEnabled === 'boolean') state.voiceEnabled = p.voiceEnabled;
+    if (Array.isArray(p.voiceMarkers)) state.voiceMarkers = p.voiceMarkers.filter(n => typeof n === 'number');
+    if (typeof p.chimeEnabled === 'boolean') state.chimeEnabled = p.chimeEnabled;
+  } catch(e) { /* ignore */ }
+}
+function savePrefs(){
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      voiceEnabled: state.voiceEnabled,
+      voiceMarkers: state.voiceMarkers,
+      chimeEnabled: state.chimeEnabled,
+    }));
+  } catch(e) { /* ignore */ }
+}
+function markerHas(m){ return state.voiceMarkers.includes(m); }
+function markerAdd(m){ if (!markerHas(m)) state.voiceMarkers.push(m); }
+function markerDel(m){ const i = state.voiceMarkers.indexOf(m); if (i >= 0) state.voiceMarkers.splice(i, 1); }
 
 /* -------------------- Elements -------------------- */
 const $ = (id) => document.getElementById(id);
-const ring = $('ring'), ringProgress = $('ringProgress'), label = $('label'), digits = $('digits'),
-      hh = $('hh'), mm = $('mm'), ss = $('ss'), ms = $('ms'),
+const ring = $('ring'), ringProgress = $('ringProgress'), label = $('label'),
+      hh = $('hh'), mm = $('mm'), ss = $('ss'), msEl = $('ms'),
       sub = $('sub'), statusDot = $('statusDot'), statusText = $('statusText'),
       btnToggle = $('btnToggle'), btnReset = $('btnReset'), btnLap = $('btnLap'),
       btnVoice = $('btnVoice'), voiceLabel = $('voiceLabel'),
@@ -373,7 +463,11 @@ const ring = $('ring'), ringProgress = $('ringProgress'), label = $('label'), di
       testVoice = $('testVoice'),
       toast = $('toast'),
       nowClock = $('nowClock'),
-      presetsEl = document.querySelector('#presets .flex');
+      presetsEl = document.querySelector('#presets .flex'),
+      alarmTime = $('alarmTime'), alarmLabel = $('alarmLabel'),
+      alarmAdd = $('alarmAdd'), alarmList = $('alarmList'),
+      alarmEmpty = $('alarmEmpty'), alarmCount = $('alarmCount'),
+      chimeEnabledEl = $('chimeEnabled'), chimeNext = $('chimeNext');
 
 // Circle circumference: r = 92, C = 2 * PI * 92 ≈ 578.05
 const RING_CIRC = 2 * Math.PI * 92;
@@ -395,41 +489,56 @@ PRESETS.forEach(p => {
   const b = document.createElement('button');
   b.className = 'chip rounded-full px-3.5 py-1.5 text-xs';
   b.textContent = p.label;
-  b.onclick = () => setTimerMs(p.ms, /*announce*/true);
+  b.onclick = () => {
+    if (state.mode !== 'timer') switchMode('timer');
+    setTimerMs(p.ms, true);
+  };
   presetsEl.appendChild(b);
 });
 
-/* -------------------- Mode switching -------------------- */
+/* ============================================================
+   Mode switching — 互不干扰
+   ============================================================ */
+function switchMode(mode){
+  if (state.mode === mode) return;
+  document.querySelectorAll('.seg button').forEach(b => b.classList.remove('on'));
+  document.querySelector(`.seg button[data-mode="${mode}"]`).classList.add('on');
+  state.mode = mode;
+  last = 0; // 防止切模式后 dt 跳变
+
+  if (mode === 'clock') {
+    stageRing.classList.add('hidden');
+    stageClock.classList.remove('hidden');
+    $('presets').classList.add('hidden');
+    $('btnReset').classList.add('hidden');
+    $('btnToggle').classList.add('hidden');
+    btnLap.classList.add('hidden');
+    lapsCard.classList.add('hidden');
+    tickClock();
+    renderAlarms();
+  } else if (mode === 'timer') {
+    stageRing.classList.remove('hidden');
+    stageClock.classList.add('hidden');
+    $('presets').classList.remove('hidden');
+    $('btnReset').classList.remove('hidden');
+    $('btnToggle').classList.remove('hidden');
+    btnLap.classList.add('hidden');
+    lapsCard.classList.add('hidden');
+    writeInputsMs(sTimer().totalMs);
+    renderTimer();
+  } else { // stopwatch
+    stageRing.classList.remove('hidden');
+    stageClock.classList.add('hidden');
+    $('presets').classList.add('hidden');
+    $('btnReset').classList.remove('hidden');
+    $('btnToggle').classList.remove('hidden');
+    btnLap.classList.remove('hidden');
+    lapsCard.classList.toggle('hidden', sStop().laps.length === 0);
+    renderStopwatch();
+  }
+}
 document.querySelectorAll('.seg button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.seg button').forEach(b => b.classList.remove('on'));
-    btn.classList.add('on');
-    state.mode = btn.dataset.mode;
-    btnLap.classList.toggle('hidden', state.mode !== 'stopwatch');
-    if (state.mode === 'clock') {
-      stageRing.classList.add('hidden');
-      stageClock.classList.remove('hidden');
-      $('presets').classList.add('hidden');
-      $('btnReset').classList.add('hidden');
-      $('btnToggle').classList.add('hidden');
-      lapsCard.classList.add('hidden');
-      stopTimer(); // ensure clean state
-    } else {
-      stageRing.classList.remove('hidden');
-      stageClock.classList.add('hidden');
-      $('presets').classList.toggle('hidden', state.mode !== 'timer');
-      $('btnReset').classList.remove('hidden');
-      $('btnToggle').classList.remove('hidden');
-      btnToggle.textContent = state.running ? '暂停' : '开始';
-      if (state.mode === 'timer') {
-        renderTimer();
-        lapsCard.classList.add('hidden');
-      } else { // stopwatch
-        renderStopwatch();
-        lapsCard.classList.toggle('hidden', state.laps.length === 0);
-      }
-    }
-  });
+  btn.addEventListener('click', () => switchMode(btn.dataset.mode));
 });
 
 /* -------------------- Duration inputs -------------------- */
@@ -464,12 +573,13 @@ document.querySelectorAll('[data-add]').forEach(btn => {
 });
 
 function setTimerMs(ms, announce){
-  state.totalMs = Math.max(0, ms);
-  state.remainMs = state.totalMs;
-  state.spoken.clear();
-  writeInputsMs(state.totalMs);
+  const t = sTimer();
+  t.totalMs = Math.max(0, ms);
+  t.remainMs = t.totalMs;
+  t.spoken.clear();
+  writeInputsMs(t.totalMs);
   if (state.mode === 'timer') renderTimer();
-  if (announce) showToast(formatMs(state.totalMs) + ' 已设置');
+  if (announce) showToast(formatMs(t.totalMs) + ' 已设置');
 }
 
 /* -------------------- Render -------------------- */
@@ -490,38 +600,39 @@ function formatStopwatch(ms){
   return formatMs(ms, true);
 }
 function renderTimer(){
-  const pct = state.totalMs > 0 ? (1 - state.remainMs / state.totalMs) : 0;
+  const t = sTimer();
+  const pct = t.totalMs > 0 ? (1 - t.remainMs / t.totalMs) : 0;
   const offset = RING_CIRC * (1 - pct);
   ringProgress.setAttribute('stroke-dashoffset', offset.toFixed(3));
   ring.classList.remove('warn', 'ok');
-  if (state.remainMs === 0) ring.classList.add('ok');
-  else if (state.totalMs > 0 && state.remainMs <= 10_000) ring.classList.add('warn');
-  const t = formatMs(state.remainMs);
-  const [H, M, S] = t.split(':');
-  hh.textContent = H; mm.textContent = M; ss.textContent = S;
-  ms.textContent = '';
+  if (t.remainMs === 0) ring.classList.add('ok');
+  else if (t.totalMs > 0 && t.remainMs <= 10_000) ring.classList.add('warn');
+  const parts = formatMs(t.remainMs).split(':');
+  hh.textContent = parts[0]; mm.textContent = parts[1]; ss.textContent = parts[2];
+  msEl.textContent = '';
   label.textContent = 'COUNTDOWN';
-  if (!state.running && state.remainMs === state.totalMs) sub.textContent = '设置时长后点击开始';
-  else if (state.running) sub.textContent = `剩余 ${formatHuman(state.remainMs)}`;
+  if (!t.running && t.remainMs === t.totalMs) sub.textContent = '设置时长后点击开始';
+  else if (t.running) sub.textContent = `剩余 ${formatHuman(t.remainMs)}`;
   else sub.textContent = '已暂停';
-  statusText.textContent = state.running ? '计时中' : (state.remainMs === 0 ? '完成' : '就绪');
-  statusDot.classList.toggle('running', state.running);
-  btnToggle.textContent = state.running ? '暂停' : (state.remainMs === 0 ? '重新开始' : '开始');
+  statusText.textContent = t.running ? '计时中' : (t.remainMs === 0 ? '完成' : '就绪');
+  statusDot.classList.toggle('running', t.running);
+  btnToggle.textContent = t.running ? '暂停' : (t.remainMs === 0 ? '重新开始' : '开始');
 }
 function renderStopwatch(){
-  const pct = (state.swElapsed % 60_000) / 60_000;
+  const sw = sStop();
+  const pct = (sw.swElapsed % 60_000) / 60_000;
   const offset = RING_CIRC * (1 - pct);
   ringProgress.setAttribute('stroke-dashoffset', offset.toFixed(3));
   ring.classList.remove('warn', 'ok');
   label.textContent = 'STOPWATCH';
-  const t = formatStopwatch(state.swElapsed).split('.');
+  const t = formatStopwatch(sw.swElapsed).split('.');
   const [H, M, S] = t[0].split(':');
   hh.textContent = H; mm.textContent = M; ss.textContent = S;
-  ms.textContent = '.' + t[1];
-  sub.textContent = state.running ? `计次 ${state.laps.length}` : (state.swElapsed > 0 ? '已暂停' : '点击开始计时');
-  statusText.textContent = state.running ? '计时中' : (state.swElapsed > 0 ? '已暂停' : '就绪');
-  statusDot.classList.toggle('running', state.running);
-  btnToggle.textContent = state.running ? '暂停' : (state.swElapsed > 0 ? '继续' : '开始');
+  msEl.textContent = '.' + t[1];
+  sub.textContent = sw.running ? `计次 ${sw.laps.length}` : (sw.swElapsed > 0 ? '已暂停' : '点击开始计时');
+  statusText.textContent = sw.running ? '计时中' : (sw.swElapsed > 0 ? '已暂停' : '就绪');
+  statusDot.classList.toggle('running', sw.running);
+  btnToggle.textContent = sw.running ? '暂停' : (sw.swElapsed > 0 ? '继续' : '开始');
 }
 function formatHuman(ms){
   if (ms >= 3600_000) return Math.floor(ms/3600_000)+' 小时';
@@ -529,44 +640,51 @@ function formatHuman(ms){
   return Math.floor(ms/1000)+' 秒';
 }
 
-/* -------------------- Tick loop -------------------- */
+/* ============================================================
+   Tick loop — 模式无关
+   ============================================================ */
 let raf = null, last = 0;
 function tick(now){
-  if (!state.running) { raf = null; return; }
+  if (!sTimer().running && !sStop().running) { raf = null; return; }
   const dt = last ? now - last : 0;
   last = now;
-  if (state.mode === 'timer') {
-    state.remainMs = Math.max(0, state.remainMs - dt);
+  if (sTimer().running) {
+    const t = sTimer();
+    t.remainMs = Math.max(0, t.remainMs - dt);
     checkVoiceMarkers();
-    renderTimer();
-    if (state.remainMs <= 0) {
+    if (state.mode === 'timer') renderTimer();
+    if (t.remainMs <= 0) {
       onTimerComplete();
-      return;
+      // 不 return — 让秒表继续
     }
-  } else if (state.mode === 'stopwatch') {
-    state.swElapsed += dt;
-    renderStopwatch();
+  }
+  if (sStop().running) {
+    sStop().swElapsed += dt;
+    if (state.mode === 'stopwatch') renderStopwatch();
   }
   raf = requestAnimationFrame(tick);
 }
 
 function onTimerComplete(){
-  state.running = false;
-  state.remainMs = 0;
-  renderTimer();
+  sTimer().running = false;
+  sTimer().remainMs = 0;
+  if (state.mode === 'timer') renderTimer();
   beep();
   if (state.voiceEnabled) speak('计时结束');
   showToast('时间到');
-  releaseWakeLock();
+  maybeReleaseWakeLock();
 }
 
-/* -------------------- Voice markers -------------------- */
+/* ============================================================
+   Voice markers
+   ============================================================ */
 function checkVoiceMarkers(){
   if (!state.voiceEnabled) return;
-  const remainMin = Math.ceil(state.remainMs / 60_000);
+  const t = sTimer();
+  const remainMin = Math.ceil(t.remainMs / 60_000);
   for (const m of state.voiceMarkers) {
-    if (remainMin === m && !state.spoken.has(m)) {
-      state.spoken.add(m);
+    if (remainMin === m && !t.spoken.has(m)) {
+      t.spoken.add(m);
       const text = m === 1 ? '还剩一分钟' : `还剩 ${m} 分钟`;
       speak(text);
     }
@@ -656,23 +774,24 @@ function renderMarkers(){
   voiceMarkersEl.innerHTML = '';
   MARKER_CHOICES.forEach(m => {
     const b = document.createElement('button');
-    const active = state.voiceMarkers.has(m);
+    const active = markerHas(m);
     b.className = 'chip rounded-full px-2.5 py-1 text-[11px] ' + (active ? 'active' : '');
     b.textContent = m >= 1 ? `${m} 分` : '30 秒';
     b.onclick = () => {
-      if (state.voiceMarkers.has(m)) state.voiceMarkers.delete(m);
-      else state.voiceMarkers.add(m);
+      if (markerHas(m)) markerDel(m);
+      else markerAdd(m);
+      savePrefs();
       renderMarkers();
     };
     voiceMarkersEl.appendChild(b);
   });
 }
-renderMarkers();
 
 voiceEnabledEl.addEventListener('change', () => {
   state.voiceEnabled = voiceEnabledEl.checked;
   voiceLabel.textContent = state.voiceEnabled ? '语音 开' : '语音 关';
   if (!state.voiceEnabled) speechSynthesis.cancel();
+  savePrefs();
 });
 
 /* -------------------- Voice toggle button -------------------- */
@@ -682,44 +801,65 @@ btnVoice.addEventListener('click', () => {
   voiceLabel.textContent = state.voiceEnabled ? '语音 开' : '语音 关';
   if (!state.voiceEnabled) speechSynthesis.cancel();
   else speak('语音提醒已开启');
+  savePrefs();
 });
 
-/* -------------------- Controls -------------------- */
+/* ============================================================
+   Controls — 按模式路由到各自 session
+   ============================================================ */
 btnToggle.addEventListener('click', () => {
   if (state.mode === 'clock') return;
   if (state.mode === 'timer') {
-    if (state.remainMs === 0) { state.remainMs = state.totalMs; state.spoken.clear(); }
-    state.running ? stopTimer() : startTimer();
+    const t = sTimer();
+    if (t.remainMs === 0) { t.remainMs = t.totalMs; t.spoken.clear(); }
+    if (t.remainMs <= 0) return;
+    t.running ? pauseActive() : resumeActive();
   } else if (state.mode === 'stopwatch') {
-    state.running ? stopTimer() : startTimer();
+    sStop().running ? pauseActive() : resumeActive();
   }
 });
 btnReset.addEventListener('click', () => {
   if (state.mode === 'timer') {
-    state.remainMs = state.totalMs; state.spoken.clear(); state.running = false;
+    const t = sTimer();
+    t.remainMs = t.totalMs;
+    t.spoken.clear();
+    t.running = false;
+    renderTimer();
   } else if (state.mode === 'stopwatch') {
-    state.swElapsed = 0; state.laps = []; lapsList.innerHTML = ''; lapsCard.classList.add('hidden'); state.running = false;
+    const sw = sStop();
+    sw.swElapsed = 0;
+    sw.laps = [];
+    sw.running = false;
+    lapsList.innerHTML = '';
+    lapsCard.classList.add('hidden');
+    renderStopwatch();
   }
-  render();
-  stopTimer();
+  maybeReleaseWakeLock();
   speechSynthesis.cancel();
+  last = 0;
 });
 btnLap.addEventListener('click', () => {
-  if (state.mode !== 'stopwatch' || !state.running) return;
-  state.laps.unshift(state.swElapsed);
+  if (state.mode !== 'stopwatch' || !sStop().running) return;
+  const sw = sStop();
+  sw.laps.unshift(sw.swElapsed);
   renderLaps();
   lapsCard.classList.remove('hidden');
 });
-clearLaps.addEventListener('click', () => { state.laps = []; renderLaps(); lapsCard.classList.add('hidden'); });
+clearLaps.addEventListener('click', () => {
+  sStop().laps = [];
+  renderLaps();
+  lapsCard.classList.add('hidden');
+});
 
 function renderLaps(){
+  const sw = sStop();
   lapsList.innerHTML = '';
-  state.laps.forEach((t, i) => {
+  sw.laps.forEach((t, i) => {
     const li = document.createElement('li');
     li.className = 'flex items-center justify-between border-b border-[color:var(--line)] py-1.5';
-    const idx = state.laps.length - i;
+    const idx = sw.laps.length - i;
     const total = formatStopwatch(t);
-    const prev = i === state.laps.length - 1 ? 0 : state.laps[i + 1];
+    const prev = i === sw.laps.length - 1 ? 0 : sw.laps[i + 1];
     const split = formatStopwatch(t - prev);
     li.innerHTML = `
       <span class="text-[color:var(--muted)] text-xs">计次 #${idx}</span>
@@ -730,22 +870,23 @@ function renderLaps(){
     lapsList.appendChild(li);
   });
 }
-function render(){ state.mode === 'timer' ? renderTimer() : renderStopwatch(); }
-
-/* -------------------- Start / Stop -------------------- */
-function startTimer(){
-  if (state.mode === 'timer' && state.remainMs <= 0) return;
-  state.running = true;
+function resumeActive(){
+  if (state.mode === 'timer') sTimer().running = true;
+  else if (state.mode === 'stopwatch') sStop().running = true;
   last = 0;
   if (!raf) raf = requestAnimationFrame(tick);
   ensureAudio();
   requestWakeLock();
 }
-function stopTimer(){
-  state.running = false;
-  if (raf) { cancelAnimationFrame(raf); raf = null; }
-  render();
-  releaseWakeLock();
+function pauseActive(){
+  if (state.mode === 'timer') sTimer().running = false;
+  else if (state.mode === 'stopwatch') sStop().running = false;
+  if (!sTimer().running && !sStop().running) {
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    maybeReleaseWakeLock();
+  }
+  if (state.mode === 'timer') renderTimer();
+  else if (state.mode === 'stopwatch') renderStopwatch();
 }
 function ensureAudio(){
   // resume audio context on user gesture
@@ -756,32 +897,44 @@ function ensureAudio(){
   }
 }
 
-/* -------------------- Wake Lock -------------------- */
+/* ============================================================
+   Wake Lock
+   ============================================================ */
 async function requestWakeLock(){
   try {
-    if ('wakeLock' in navigator) {
+    if ('wakeLock' in navigator && !state.wakeLock) {
       state.wakeLock = await navigator.wakeLock.request('screen');
-      state.wakeLock.addEventListener('release', () => {});
+      state.wakeLock.addEventListener('release', () => { state.wakeLock = null; });
     }
   } catch(e){ /* ignore */ }
 }
-async function releaseWakeLock(){
-  try { if (state.wakeLock) { await state.wakeLock.release(); state.wakeLock = null; } } catch(e){}
+async function maybeReleaseWakeLock(){
+  if (!sTimer().running && !sStop().running) {
+    try { if (state.wakeLock) { await state.wakeLock.release(); state.wakeLock = null; } } catch(e){}
+  }
 }
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && state.running) await requestWakeLock();
+  if (document.visibilityState === 'visible' && (sTimer().running || sStop().running)) {
+    await requestWakeLock();
+  }
 });
 
-/* -------------------- Wall clock & nowClock -------------------- */
+/* ============================================================
+   Wall clock
+   ============================================================ */
 function tickClock(){
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
   const t = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   nowClock.textContent = t;
+  // 闹钟和整点报时全局生效，不限当前模式
+  checkChime(d);
+  checkAlarms(d);
   if (state.mode === 'clock') {
     bigClock.textContent = t;
     const week = ['日','一','二','三','四','五','六'][d.getDay()];
     bigDate.textContent = `${d.getFullYear()} 年 ${pad(d.getMonth()+1)} 月 ${pad(d.getDate())} 日 · 周${week}`;
+    updateChimeNext(d);
   }
 }
 setInterval(tickClock, 1000); tickClock();
@@ -795,7 +948,150 @@ function showToast(text){
   toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
 }
 
-/* -------------------- Keyboard shortcuts -------------------- */
+/* ============================================================
+   整点报时
+   ============================================================ */
+function checkChime(d){
+  if (!state.chimeEnabled) return;
+  if (d.getMinutes() !== 0 || d.getSeconds() !== 0) return;
+  const key = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}`;
+  if (state.chimeLastKey === key) return;
+  state.chimeLastKey = key;
+  speak(`现在 ${pad2(d.getHours())} 点整`);
+  try { beep(); } catch(e){}
+}
+function updateChimeNext(d){
+  if (!chimeNext) return;
+  if (!state.chimeEnabled) {
+    chimeNext.textContent = '下次播报：已关闭';
+    return;
+  }
+  const next = new Date(d.getTime());
+  next.setHours(next.getHours() + 1, 0, 0, 0);
+  chimeNext.textContent = `下次播报：${pad2(next.getHours())}:00`;
+}
+chimeEnabledEl.addEventListener('change', () => {
+  state.chimeEnabled = chimeEnabledEl.checked;
+  if (state.chimeEnabled) speak('整点报时已开启');
+  updateChimeNext(new Date());
+  savePrefs();
+});
+
+/* ============================================================
+   闹钟
+   ============================================================ */
+function loadAlarms(){
+  try {
+    const raw = localStorage.getItem('chronos.alarms');
+    state.alarms = raw ? JSON.parse(raw) : [];
+  } catch(e) { state.alarms = []; }
+}
+function saveAlarms(){
+  try { localStorage.setItem('chronos.alarms', JSON.stringify(state.alarms)); } catch(e){}
+}
+function addAlarm(time, label){
+  if (!time) return;
+  const id = 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  state.alarms.push({
+    id, time, label: (label || '').trim(),
+    enabled: true,
+    lastTriggerKey: '',
+  });
+  saveAlarms();
+  renderAlarms();
+}
+function removeAlarm(id){
+  state.alarms = state.alarms.filter(a => a.id !== id);
+  saveAlarms();
+  renderAlarms();
+}
+function toggleAlarm(id){
+  const a = state.alarms.find(x => x.id === id);
+  if (!a) return;
+  a.enabled = !a.enabled;
+  a.lastTriggerKey = '';
+  saveAlarms();
+  renderAlarms();
+}
+function checkAlarms(d){
+  const hh = pad2(d.getHours());
+  const mm = pad2(d.getMinutes());
+  const now = `${hh}:${mm}`;
+  const key = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${hh}:${mm}`;
+  state.alarms.forEach(a => {
+    if (!a.enabled) return;
+    if (a.time !== now) return;
+    if (a.lastTriggerKey === key) return;
+    a.lastTriggerKey = key;
+    saveAlarms();
+    try { beep(); } catch(e){}
+    const text = a.label
+      ? `闹钟：${a.label}，现在 ${now}`
+      : `现在 ${now}，闹钟时间到`;
+    speak(text);
+    showToast('⏰ ' + (a.label || now));
+  });
+}
+function renderAlarms(){
+  alarmList.innerHTML = '';
+  alarmCount.textContent = `（${state.alarms.length}）`;
+  if (state.alarms.length === 0) {
+    alarmEmpty.classList.remove('hidden');
+    return;
+  }
+  alarmEmpty.classList.add('hidden');
+  const sorted = [...state.alarms].sort((a, b) => a.time.localeCompare(b.time));
+  sorted.forEach(a => {
+    const li = document.createElement('li');
+    li.className = 'flex items-center justify-between gap-2 py-1.5 border-b border-[color:var(--line)]';
+    const safeLabel = (a.label || '未命名').replace(/[<>]/g,'');
+    li.innerHTML = `
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-2xl tabular-nums">${a.time}</span>
+        <span class="text-xs text-[color:var(--muted)] truncate">${safeLabel}</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <label class="inline-flex items-center cursor-pointer">
+          <input type="checkbox" class="sr-only peer" ${a.enabled ? 'checked' : ''}>
+          <div class="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-[color:var(--accent)] relative transition">
+            <div class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white peer-checked:translate-x-4 transition"></div>
+          </div>
+        </label>
+        <button class="text-[color:var(--muted)] hover:text-white text-sm px-2" data-act="del" aria-label="删除">✕</button>
+      </div>
+    `;
+    li.querySelector('input[type=checkbox]').addEventListener('change', () => toggleAlarm(a.id));
+    li.querySelector('[data-act=del]').addEventListener('click', () => removeAlarm(a.id));
+    alarmList.appendChild(li);
+  });
+}
+alarmAdd.addEventListener('click', () => {
+  addAlarm(alarmTime.value, alarmLabel.value);
+  alarmLabel.value = '';
+  showToast('闹钟已添加：' + alarmTime.value);
+});
+alarmLabel.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') alarmAdd.click();
+});
+document.querySelectorAll('[data-alarm-quick]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    addAlarm(btn.dataset.alarmQuick, '');
+    showToast('闹钟已添加：' + btn.dataset.alarmQuick);
+  });
+});
+// 初始化：加载偏好 → 同步 UI
+loadPrefs();
+loadAlarms();
+renderAlarms();
+renderMarkers();
+chimeEnabledEl.checked = state.chimeEnabled;
+voiceEnabledEl.checked = state.voiceEnabled;
+voiceLabel.textContent = state.voiceEnabled ? '语音 开' : '语音 关';
+updateChimeNext(new Date());
+
+/* ============================================================
+   Keyboard shortcuts
+   ============================================================ */
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, select, textarea')) return;
   if (e.code === 'Space') { e.preventDefault(); btnToggle.click(); }
@@ -804,7 +1100,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key.toLowerCase() === 'm') {
     const order = ['timer', 'stopwatch', 'clock'];
     const next = order[(order.indexOf(state.mode) + 1) % order.length];
-    document.querySelector(`.seg button[data-mode="${next}"]`).click();
+    switchMode(next);
   }
   else if (e.key.toLowerCase() === 'v') btnVoice.click();
 });
@@ -826,13 +1122,13 @@ async function ensurePngIcons(){
       <stop offset="55%" stop-color="#ff7a59"/>
       <stop offset="100%" stop-color="#7a3b2a"/>
     </radialGradient>
-    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="ringGradient" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff" stop-opacity=".18"/>
       <stop offset="100%" stop-color="#ffffff" stop-opacity=".04"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="#0b0b10"/>
-  <circle cx="256" cy="288" r="176" fill="none" stroke="url(#ring)" stroke-width="6"/>
+  <circle cx="256" cy="288" r="176" fill="none" stroke="url(#ringGradient)" stroke-width="6"/>
   <circle cx="256" cy="288" r="176" fill="none" stroke="url(#g)" stroke-width="22"
           stroke-dasharray="905 1105" stroke-linecap="round" transform="rotate(-90 256 288)"/>
   <g stroke="#ffffff" stroke-linecap="round" stroke-width="14" fill="none" opacity=".95">
@@ -855,24 +1151,24 @@ async function ensurePngIcons(){
   };
   try {
     const [p192, p512] = await Promise.all([make(192), make(512)]);
-    [p192, p512].forEach(async (blob, i) => {
-      const size = i === 0 ? 192 : 512;
-      const fname = i === 0 ? 'icon-192.png' : 'icon-512.png';
+    const blobs = [{ blob: p192, fname: 'icon-192.png' }, { blob: p512, fname: 'icon-512.png' }];
+    for (const { blob, fname } of blobs) {
       const url = URL.createObjectURL(blob);
-      // cache the blob for the manifest
-      const existing = await caches.match(fname);
       const resp = new Response(blob, { headers: { 'Content-Type': 'image/png' } });
       const cache = await caches.open('chronos-icons');
       await cache.put(fname, resp);
       URL.revokeObjectURL(url);
-    });
-  } catch (e) { /* non-fatal */ }
+    }
+  } catch (e) { /* non-fatal (file:// 不能用 Cache API) */ }
 }
 ensurePngIcons();
 
-/* -------------------- Init -------------------- */
-writeInputsMs(state.totalMs);
+/* ============================================================
+   Init
+   ============================================================ */
+writeInputsMs(sTimer().totalMs);
 renderTimer();
+renderStopwatch();
 tickClock();
 
 function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
