@@ -236,6 +236,7 @@
         <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-2">本地时间</div>
         <div id="bigClock" class="digits"></div>
         <div id="bigDate" class="mt-3 text-[color:var(--muted)] tracking-wider"></div>
+        <div id="bigLunar" class="mt-1 text-[color:var(--muted)] text-[11px] tracking-wider opacity-60"></div>
 
         <!-- 闹钟 + 整点报时 -->
         <div class="mt-8 max-w-md mx-auto space-y-4 text-left">
@@ -388,6 +389,7 @@
 
 <div id="toast" class="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/solar2lunar@2.0.5/dist/index.min.js"></script>
 <script>
 /* ============================================================
    State — 每个模式独立 session，互不串台
@@ -461,7 +463,7 @@ const ring = $('ring'), ringProgress = $('ringProgress'), label = $('label'),
       btnToggle = $('btnToggle'), btnReset = $('btnReset'), btnLap = $('btnLap'),
       btnVoice = $('btnVoice'), voiceLabel = $('voiceLabel'),
       stageRing = $('stageRing'), stageClock = $('stageClock'),
-      bigClock = $('bigClock'), bigDate = $('bigDate'),
+      bigClock = $('bigClock'), bigDate = $('bigDate'), bigLunar = $('bigLunar'),
       lapsCard = $('lapsCard'), lapsList = $('lapsList'),
       clearLaps = $('clearLaps'),
       inH = $('inH'), inM = $('inM'), inS = $('inS'),
@@ -948,6 +950,7 @@ function tickClock(){
     bigClock.textContent = t;
     const week = ['日','一','二','三','四','五','六'][d.getDay()];
     bigDate.textContent = `${d.getFullYear()} 年 ${pad(d.getMonth()+1)} 月 ${pad(d.getDate())} 日 · 周${week}`;
+    bigLunar.textContent = getLunarStr(d);
     updateChimeNext(d);
   }
 }
@@ -1190,6 +1193,19 @@ $('cardVoice').classList.remove('hidden');
 $('presets').classList.remove('hidden');
 
 function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
+
+/* ============================================================
+   Lunar formatter (wraps solar2lunar CDN library)
+   ============================================================ */
+function getLunarStr(date) {
+  if (typeof solar2lunar !== 'function') return '';
+  var r = solar2lunar(date.getFullYear(), date.getMonth() + 1, date.getDate());
+  if (!r || r === -1) return '';
+  var parts = [r.gzYear + '年（' + r.Animal + '）' + (r.isLeap ? '闰' : '') + r.IMonthCn + r.IDayCn];
+  if (r.festival) parts.push(r.festival);
+  else if (r.Term) parts.push(r.Term);
+  return parts.join(' · ');
+}
 </script>
 </body>
 </html>
