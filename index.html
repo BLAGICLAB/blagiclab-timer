@@ -81,14 +81,22 @@
   }
   .digits{
     font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
-    font-size: clamp(56px, 13vw, 120px);
-    font-weight: 800;
+    font-size: clamp(48px, 13vw, 120px);
+    font-weight: 700;
     color: #ffffff;
     line-height: 1;
-    letter-spacing: 0;
+    letter-spacing: -0.02em;
     white-space: nowrap;
     text-align: center;
     display: block;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    max-width: 100%;
+  }
+  /* 时钟视图单独再缩小一点，避开 iPhone PWA 状态栏宽度 */
+  #bigClock{
+    font-size: clamp(44px, 11vw, 96px) !important;
+    font-weight: 600 !important;
   }
   .digits .ms{
     font-size: 0.35em;
@@ -189,7 +197,7 @@
   </div>
 </header>
 
-<main class="px-4 md:px-10 pb-10">
+<main class="px-4 md:px-10 pb-10" style="padding-left: calc(env(safe-area-inset-left, 0px) + 1rem); padding-right: calc(env(safe-area-inset-right, 0px) + 1rem);">
   <!-- Mode switch -->
   <div class="max-w-[1400px] mx-auto mt-6">
     <div class="seg max-w-md mx-auto" role="tablist" aria-label="模式">
@@ -224,9 +232,9 @@
       </div>
 
       <!-- Clock view (hidden by default) -->
-      <div id="stageClock" class="hidden text-center py-6">
+      <div id="stageClock" class="hidden text-center py-6 px-3" style="padding-top: calc(env(safe-area-inset-top) + 1.5rem);">
         <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-2">本地时间</div>
-        <div id="bigClock" class="digits" style="font-size: clamp(72px, 12vw, 140px);"></div>
+        <div id="bigClock" class="digits"></div>
         <div id="bigDate" class="mt-3 text-[color:var(--muted)] tracking-wider"></div>
 
         <!-- 闹钟 + 整点报时 -->
