@@ -1,2 +1,6 @@
 # Chronos 备份文件
 *.bak-*
+
+# 本地预览
+_preview*.png
+preview*.png
