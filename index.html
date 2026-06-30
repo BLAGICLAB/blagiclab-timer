@@ -314,7 +314,7 @@
     <!-- Side panel -->
     <aside class="space-y-6">
       <!-- Duration editor -->
-      <div class="glass rounded-[24px] p-5">
+      <div id="cardDuration" class="glass rounded-[24px] p-5">
         <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-3">设置时长</div>
         <div class="grid grid-cols-3 gap-2 text-center">
           <div>
@@ -342,7 +342,7 @@
       </div>
 
       <!-- Voice settings -->
-      <div class="glass rounded-[24px] p-5">
+      <div id="cardVoice" class="glass rounded-[24px] p-5">
         <div class="flex items-center justify-between mb-3">
           <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)]">语音提醒</div>
           <label class="inline-flex items-center gap-2 text-xs text-[color:var(--muted)]">
@@ -522,6 +522,8 @@ function switchMode(mode){
     $('btnToggle').classList.add('hidden');
     btnLap.classList.add('hidden');
     lapsCard.classList.add('hidden');
+    $('cardDuration').classList.add('hidden');
+    $('cardVoice').classList.add('hidden');
     tickClock();
     renderAlarms();
   } else if (mode === 'timer') {
@@ -532,6 +534,8 @@ function switchMode(mode){
     $('btnToggle').classList.remove('hidden');
     btnLap.classList.add('hidden');
     lapsCard.classList.add('hidden');
+    $('cardDuration').classList.remove('hidden');
+    $('cardVoice').classList.remove('hidden');
     writeInputsMs(sTimer().totalMs);
     renderTimer();
   } else { // stopwatch
@@ -542,6 +546,8 @@ function switchMode(mode){
     $('btnToggle').classList.remove('hidden');
     btnLap.classList.remove('hidden');
     lapsCard.classList.toggle('hidden', sStop().laps.length === 0);
+    $('cardDuration').classList.add('hidden');
+    $('cardVoice').classList.add('hidden');
     renderStopwatch();
   }
 }
@@ -1178,6 +1184,10 @@ writeInputsMs(sTimer().totalMs);
 renderTimer();
 renderStopwatch();
 tickClock();
+// 侧栏卡片按默认 mode（timer）控制显隐
+$('cardDuration').classList.remove('hidden');
+$('cardVoice').classList.remove('hidden');
+$('presets').classList.remove('hidden');
 
 function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
 </script>
