@@ -251,11 +251,11 @@
             </div>
             <div class="flex flex-wrap gap-1.5 mt-3">
               <span class="text-[11px] text-[color:var(--muted)] mr-1 self-center">快捷：</span>
-              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="06:30">06:30 起床</button>
-              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="07:30">07:30 出门</button>
-              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="12:00">12:00 午饭</button>
-              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="18:00">18:00 晚饭</button>
-              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="22:30">22:30 睡觉</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="06:30" data-alarm-label="起床">06:30 起床</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="07:30" data-alarm-label="出门">07:30 出门</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="12:00" data-alarm-label="午饭">12:00 午饭</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="18:00" data-alarm-label="晚饭">18:00 晚饭</button>
+              <button class="chip rounded-full px-2.5 py-1 text-[11px]" data-alarm-quick="22:30" data-alarm-label="睡觉">22:30 睡觉</button>
             </div>
           </div>
 
@@ -1089,8 +1089,8 @@ alarmLabel.addEventListener('keydown', (e) => {
 });
 document.querySelectorAll('[data-alarm-quick]').forEach(btn => {
   btn.addEventListener('click', () => {
-    addAlarm(btn.dataset.alarmQuick, '');
-    showToast('闹钟已添加：' + btn.dataset.alarmQuick);
+    addAlarm(btn.dataset.alarmQuick, btn.dataset.alarmLabel || '');
+    showToast('闹钟已添加：' + btn.dataset.alarmQuick + (btn.dataset.alarmLabel ? ' ' + btn.dataset.alarmLabel : ''));
   });
 });
 // 初始化：加载偏好 → 同步 UI
