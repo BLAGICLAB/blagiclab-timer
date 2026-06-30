@@ -197,7 +197,7 @@
   </div>
 </header>
 
-<main class="px-4 md:px-10 pb-10" style="padding-left: calc(env(safe-area-inset-left, 0px) + 1rem); padding-right: calc(env(safe-area-inset-right, 0px) + 1rem);">
+<main class="px-4 md:px-10 pb-10" style="padding-left: calc(env(safe-area-inset-left, 0px) + 1rem); padding-right: calc(env(safe-area-inset-right, 0px) + 1rem); overflow-x:hidden;">
   <!-- Mode switch -->
   <div class="max-w-[1400px] mx-auto mt-6">
     <div class="seg max-w-md mx-auto" role="tablist" aria-label="模式">
@@ -211,7 +211,7 @@
   <div class="max-w-[1200px] mx-auto mt-8 grid lg:grid-cols-[1fr_360px] gap-6">
 
     <!-- Stage -->
-    <section class="glass rounded-[28px] p-6 md:p-10 relative">
+    <section class="glass rounded-[28px] p-6 md:p-10 relative" style="min-width:0;">
       <!-- Timer / Stopwatch view -->
       <div id="stageRing" class="relative mx-auto flex justify-center" style="width:100%; max-width:100%">
         <div id="ring" class="ring mx-auto relative">
@@ -232,7 +232,7 @@
       </div>
 
       <!-- Clock view (hidden by default) -->
-      <div id="stageClock" class="hidden text-center py-6 px-3" style="padding-top: calc(env(safe-area-inset-top) + 1.5rem);">
+      <div id="stageClock" class="hidden text-center py-6 px-3" style="width:100%; max-width:100%; padding-top: calc(env(safe-area-inset-top) + 1.5rem);">
         <div class="text-[11px] uppercase tracking-[.3em] text-[color:var(--muted)] mb-2">本地时间</div>
         <div id="bigClock" class="digits"></div>
         <div id="bigDate" class="mt-3 text-[color:var(--muted)] tracking-wider"></div>
